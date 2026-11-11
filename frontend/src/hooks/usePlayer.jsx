@@ -3,9 +3,9 @@ import { api, getToken, setToken } from '../api/client.js';
 
 const PlayerContext = createContext(null);
 
-// PlayerProvider holds the signed-in player ({id, name, stats}) or null.
-// Signing in means picking a name; the server returns a token we keep in
-// localStorage and send with every request.
+// PlayerProvider holds the signed-in player ({id, name, hasPassword, stats})
+// or null. Registering or logging in returns a session token, which we keep
+// in localStorage and send with every request.
 export function PlayerProvider({ children }) {
   const [player, setPlayer] = useState(null);
   const [loading, setLoading] = useState(() => Boolean(getToken()));
@@ -20,7 +20,7 @@ export function PlayerProvider({ children }) {
       setPlayer(await api.me());
     } catch (e) {
       if (e.status === 401) {
-        // Token no longer valid (e.g. database was reset).
+        // Session expired or signed out elsewhere.
         setToken(null);
         setPlayer(null);
       }
@@ -33,14 +33,36 @@ export function PlayerProvider({ children }) {
     refresh();
   }, [refresh]);
 
-  const register = useCallback(async (name) => {
-    const { player: created, token } = await api.register(name);
+  const signIn = useCallback(async (mode, name, password) => {
+    const call = mode === 'register' ? api.register : api.login;
+    const { player: signedIn, token } = await call(name, password);
     setToken(token);
-    setPlayer(created);
-    return created;
+    setPlayer(signedIn);
+    return signedIn;
   }, []);
 
-  const value = useMemo(() => ({ player, loading, register, refresh }), [player, loading, register, refresh]);
+  const logout = useCallback(async () => {
+    try {
+      await api.logout();
+    } catch {
+      // Even if the server call fails, forget the session locally.
+    }
+    setToken(null);
+    setPlayer(null);
+  }, []);
+
+  const changePassword = useCallback(
+    async (currentPassword, newPassword) => {
+      await api.changePassword(currentPassword, newPassword);
+      await refresh(); // hasPassword may have changed
+    },
+    [refresh],
+  );
+
+  const value = useMemo(
+    () => ({ player, loading, signIn, logout, changePassword, refresh }),
+    [player, loading, signIn, logout, changePassword, refresh],
+  );
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
 

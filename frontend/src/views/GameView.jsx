@@ -7,7 +7,7 @@ import { isWaiting, seatOf, statusSeat, statusText } from '../lib/players.js';
 import Board from '../components/Board.jsx';
 import Players from '../components/Players.jsx';
 import ShareLink from '../components/ShareLink.jsx';
-import NameForm from '../components/NameForm.jsx';
+import AuthForm from '../components/AuthForm.jsx';
 
 export default function GameView({ gameId }) {
   const { player, loading } = usePlayer();
@@ -65,8 +65,8 @@ export default function GameView({ gameId }) {
             </button>
           ) : (
             <>
-              <p>Choose a name to join this game as Yellow.</p>
-              <NameForm submitLabel="Join game" onDone={join} />
+              <p>Sign in or create an account to join this game as Yellow.</p>
+              <AuthForm onDone={join} />
             </>
           )}
         </div>

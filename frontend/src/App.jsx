@@ -5,9 +5,16 @@ import GameView from './views/GameView.jsx';
 import ReplayView from './views/ReplayView.jsx';
 
 function PlayerBadge() {
-  const { player } = usePlayer();
+  const { player, logout } = usePlayer();
   if (!player) return null;
-  return <span className="badge-name">{player.name}</span>;
+  return (
+    <div className="badge-name">
+      <span>{player.name}</span>
+      <button type="button" className="secondary small" onClick={logout}>
+        Sign out
+      </button>
+    </div>
+  );
 }
 
 function Page() {

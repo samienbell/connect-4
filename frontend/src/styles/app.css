@@ -75,6 +75,9 @@ body {
 }
 
 .badge-name {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   font-weight: 600;
   color: var(--muted);
 }
@@ -191,8 +194,77 @@ label {
   font-size: 0.9rem;
 }
 
-.name-form .error {
-  margin-top: 0.5rem;
+button.small {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+/* ---------- account forms ---------- */
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 24rem;
+}
+
+.auth-form label {
+  margin: 0.5rem 0 0;
+}
+
+.auth-form .hint,
+.auth-form .error,
+.auth-form .success {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.auth-form button[type='submit'] {
+  margin-top: 0.75rem;
+  align-self: flex-start;
+}
+
+.auth-form input[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin-bottom: 0.25rem;
+  border-radius: 0.6rem;
+  background: var(--bg);
+}
+
+.tabs button:not(.column) {
+  flex: 1;
+  padding: 0.45rem 0.8rem;
+  color: var(--muted);
+  background: transparent;
+}
+
+.tabs button.on:not(.column) {
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
+}
+
+.success {
+  color: var(--win);
+}
+
+.notice {
+  border-color: var(--p2);
+}
+
+details summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+details[open] summary {
+  margin-bottom: 0.5rem;
 }
 
 a {
@@ -400,7 +472,8 @@ a {
   text-align: center;
 }
 
-.join .name-form {
+.join .auth-form {
+  margin: 0 auto;
   text-align: left;
 }
 

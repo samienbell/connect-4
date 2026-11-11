@@ -2,8 +2,11 @@
 
 A self-contained Connect 4 game.
 
-- **Online play:** pick a name, start a game and send the link to a friend. Moves
-  appear live for both players, and anyone else with the link can watch.
+- **Accounts:** sign up with a name and password and sign in from any device.
+  Passwords are stored as salted Argon2id hashes, and repeated wrong guesses
+  are throttled.
+- **Online play:** start a game and send the link to a friend. Moves appear
+  live for both players, and anyone else with the link can watch.
 - **Play on one device:** two people take turns on the same screen, no name needed.
 - **Replays:** step through any game move by move, or let it play back.
 - **Stats and leaderboard:** wins, losses, draws and win rate from finished online games.
@@ -50,8 +53,8 @@ npm run dev
 
 Run the backend tests with `cd backend && go test ./...`.
 
-To try online play on one computer, open the game link in a second browser
-or a private window. Each browser profile is a separate player.
+To try online play on one computer, create two accounts and sign in to the
+second one in a private window (or another browser), then open the game link there.
 
 ## Deploy to Kubernetes
 
@@ -77,7 +80,8 @@ connect-4/
 │   │   ├── config/          # environment-variable settings
 │   │   ├── events/          # live-update hub (Postgres LISTEN/NOTIFY → SSE)
 │   │   ├── game/            # rules: moves, win/draw detection, seats (+ tests)
-│   │   ├── handler/         # HTTP routes, sign-in tokens, SSE stream
+│   │   ├── handler/         # HTTP routes, accounts & sessions, SSE stream
+│   │   ├── password/        # salted Argon2id password hashing (+ tests)
 │   │   └── store/           # PostgreSQL queries: games, moves, players, stats
 │   └── migrations/          # versioned SQL files, applied once each on start-up
 ├── frontend/
@@ -85,8 +89,8 @@ connect-4/
 │   ├── vite.config.js
 │   └── src/
 │       ├── api/             # fetch wrapper + token storage
-│       ├── components/      # Board, Players, NameForm, Leaderboard, ...
-│       ├── hooks/           # usePlayer (sign-in), useLiveGame (SSE)
+│       ├── components/      # Board, Players, AuthForm, PasswordForm, Leaderboard, ...
+│       ├── hooks/           # usePlayer (account/session), useLiveGame (SSE)
 │       ├── lib/             # seat/status text helpers
 │       ├── views/           # Lobby, GameView, ReplayView
 │       ├── router.jsx       # tiny client-side router

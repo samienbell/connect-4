@@ -27,7 +27,11 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /healthz", h.healthz)
 	mux.HandleFunc("GET /readyz", h.readyz)
 
-	mux.HandleFunc("POST /api/players", h.createPlayer)
+	mux.HandleFunc("POST /api/auth/register", h.register)
+	mux.HandleFunc("POST /api/auth/login", h.login)
+	mux.HandleFunc("POST /api/auth/logout", h.logout)
+	mux.HandleFunc("PUT /api/me/password", h.changePassword)
+
 	mux.HandleFunc("GET /api/players/{id}", h.getPlayer)
 	mux.HandleFunc("GET /api/me", h.me)
 	mux.HandleFunc("GET /api/me/games", h.myGames)

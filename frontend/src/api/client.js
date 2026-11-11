@@ -38,6 +38,7 @@ async function request(path, { method = 'GET', body } = {}) {
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(data.error || `Request failed (${res.status})`, res.status);
   return data;
@@ -46,7 +47,12 @@ async function request(path, { method = 'GET', body } = {}) {
 const enc = encodeURIComponent;
 
 export const api = {
-  register: (name) => request('/players', { method: 'POST', body: { name } }),
+  register: (name, password) => request('/auth/register', { method: 'POST', body: { name, password } }),
+  login: (name, password) => request('/auth/login', { method: 'POST', body: { name, password } }),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+  changePassword: (currentPassword, newPassword) =>
+    request('/me/password', { method: 'PUT', body: { currentPassword, newPassword } }),
+
   me: () => request('/me'),
   myGames: () => request('/me/games'),
   leaderboard: () => request('/leaderboard'),

@@ -10,9 +10,18 @@ import (
 )
 
 type Player struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	CreatedAt   time.Time `json:"createdAt"`
+	HasPassword bool      `json:"hasPassword"` // false for players from before accounts
+}
+
+// Credentials is what the login check needs. Never send it to clients.
+type Credentials struct {
+	Player
+	PasswordHash    *string // nil if the player has no password yet
+	FailedLogins    int
+	LastFailedLogin *time.Time
 }
 
 // Stats summarises a player's finished online games.
@@ -31,14 +40,31 @@ type LeaderboardEntry struct {
 	Stats
 }
 
-func (s *Store) CreatePlayer(ctx context.Context, name string, tokenHash []byte) (*Player, error) {
-	p := Player{Name: name}
-	err := s.pool.QueryRow(ctx, `
-		INSERT INTO players (name, token_hash) VALUES ($1, $2)
-		RETURNING id::text, created_at`, name, tokenHash,
-	).Scan(&p.ID, &p.CreatedAt)
+// execer is satisfied by both the pool and a transaction.
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// Register creates a player with a password and signs them in with a new
+// session, in one transaction.
+func (s *Store) Register(ctx context.Context, name, passwordHash string, tokenHash []byte, expires time.Time) (*Player, error) {
+	p := Player{Name: name, HasPassword: true}
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, `
+			INSERT INTO players (name, password_hash) VALUES ($1, $2)
+			RETURNING id::text, created_at`, name, passwordHash,
+		).Scan(&p.ID, &p.CreatedAt)
+		if err != nil {
+			return err
+		}
+		return insertSession(ctx, tx, p.ID, tokenHash, expires)
+	})
+	if isUniqueViolation(err) {
 		return nil, ErrNameTaken
 	}
 	if err != nil {
@@ -47,22 +73,11 @@ func (s *Store) CreatePlayer(ctx context.Context, name string, tokenHash []byte)
 	return &p, nil
 }
 
-func (s *Store) PlayerByTokenHash(ctx context.Context, tokenHash []byte) (*Player, error) {
-	return s.getPlayer(ctx, "token_hash = $1", tokenHash)
-}
+const playerColumns = "p.id::text, p.name, p.created_at, p.password_hash IS NOT NULL"
 
-func (s *Store) PlayerByID(ctx context.Context, id string) (*Player, error) {
-	if !validID(id) {
-		return nil, ErrNotFound
-	}
-	return s.getPlayer(ctx, "id = $1", id)
-}
-
-func (s *Store) getPlayer(ctx context.Context, where string, arg any) (*Player, error) {
+func scanPlayer(row pgx.Row) (*Player, error) {
 	var p Player
-	err := s.pool.QueryRow(ctx,
-		"SELECT id::text, name, created_at FROM players WHERE "+where, arg,
-	).Scan(&p.ID, &p.Name, &p.CreatedAt)
+	err := row.Scan(&p.ID, &p.Name, &p.CreatedAt, &p.HasPassword)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -70,6 +85,98 @@ func (s *Store) getPlayer(ctx context.Context, where string, arg any) (*Player, 
 		return nil, err
 	}
 	return &p, nil
+}
+
+func (s *Store) PlayerByID(ctx context.Context, id string) (*Player, error) {
+	if !validID(id) {
+		return nil, ErrNotFound
+	}
+	return scanPlayer(s.pool.QueryRow(ctx, "SELECT "+playerColumns+" FROM players p WHERE p.id = $1", id))
+}
+
+// PlayerBySession returns the player signed in with this session token, if
+// the session exists and hasn't expired.
+func (s *Store) PlayerBySession(ctx context.Context, tokenHash []byte) (*Player, error) {
+	return scanPlayer(s.pool.QueryRow(ctx, `
+		SELECT `+playerColumns+`
+		FROM sessions s JOIN players p ON p.id = s.player_id
+		WHERE s.token_hash = $1 AND s.expires_at > now()`, tokenHash))
+}
+
+const credentialColumns = playerColumns + ", p.password_hash, p.failed_logins, p.last_failed_login"
+
+func scanCredentials(row pgx.Row) (*Credentials, error) {
+	var c Credentials
+	err := row.Scan(&c.ID, &c.Name, &c.CreatedAt, &c.HasPassword, &c.PasswordHash, &c.FailedLogins, &c.LastFailedLogin)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// CredentialsByName looks a player up by name, ignoring case.
+func (s *Store) CredentialsByName(ctx context.Context, name string) (*Credentials, error) {
+	return scanCredentials(s.pool.QueryRow(ctx,
+		"SELECT "+credentialColumns+" FROM players p WHERE lower(p.name) = lower($1)", name))
+}
+
+func (s *Store) CredentialsByID(ctx context.Context, id string) (*Credentials, error) {
+	if !validID(id) {
+		return nil, ErrNotFound
+	}
+	return scanCredentials(s.pool.QueryRow(ctx,
+		"SELECT "+credentialColumns+" FROM players p WHERE p.id = $1", id))
+}
+
+func (s *Store) SetPassword(ctx context.Context, playerID, passwordHash string) error {
+	_, err := s.pool.Exec(ctx, "UPDATE players SET password_hash = $2 WHERE id = $1", playerID, passwordHash)
+	return err
+}
+
+func (s *Store) RecordLoginFailure(ctx context.Context, playerID string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE players SET failed_logins = failed_logins + 1, last_failed_login = now()
+		WHERE id = $1`, playerID)
+	return err
+}
+
+func (s *Store) ResetLoginFailures(ctx context.Context, playerID string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE players SET failed_logins = 0, last_failed_login = NULL
+		WHERE id = $1 AND failed_logins <> 0`, playerID)
+	return err
+}
+
+// CreateSession signs a player in. It also clears out their expired sessions.
+func (s *Store) CreateSession(ctx context.Context, playerID string, tokenHash []byte, expires time.Time) error {
+	if _, err := s.pool.Exec(ctx,
+		"DELETE FROM sessions WHERE player_id = $1 AND expires_at <= now()", playerID); err != nil {
+		return err
+	}
+	return insertSession(ctx, s.pool, playerID, tokenHash, expires)
+}
+
+func insertSession(ctx context.Context, db execer, playerID string, tokenHash []byte, expires time.Time) error {
+	_, err := db.Exec(ctx,
+		"INSERT INTO sessions (token_hash, player_id, expires_at) VALUES ($1, $2, $3)",
+		tokenHash, playerID, expires)
+	return err
+}
+
+func (s *Store) DeleteSession(ctx context.Context, tokenHash []byte) error {
+	_, err := s.pool.Exec(ctx, "DELETE FROM sessions WHERE token_hash = $1", tokenHash)
+	return err
+}
+
+// DeleteOtherSessions signs the player out everywhere except the session
+// identified by keepTokenHash.
+func (s *Store) DeleteOtherSessions(ctx context.Context, playerID string, keepTokenHash []byte) error {
+	_, err := s.pool.Exec(ctx,
+		"DELETE FROM sessions WHERE player_id = $1 AND token_hash <> $2", playerID, keepTokenHash)
+	return err
 }
 
 // resultsCTE turns every finished online game into two rows, one per seat,

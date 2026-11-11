@@ -11,9 +11,11 @@ import (
 	"connect4/internal/store"
 )
 
-// Players have no password. On sign-up the server returns a random token,
-// the browser keeps it in localStorage and sends it as
-// "Authorization: Bearer <token>". Only its SHA-256 hash is stored.
+// Signing in (register or login) creates a session: a random token the
+// browser keeps in localStorage and sends as "Authorization: Bearer <token>".
+// The sessions table stores only the token's SHA-256 hash, so a database leak
+// doesn't hand out working sign-ins. (A plain hash is enough here because the
+// token is 256 random bits; passwords, which people choose, get Argon2id.)
 
 var errBadToken = errors.New("invalid token")
 
@@ -31,45 +33,60 @@ func hashToken(token string) []byte {
 	return sum[:]
 }
 
-// player returns the signed-in caller, or nil if the request has no token.
-// A token that is present but unknown returns errBadToken.
-func (h *Handler) player(r *http.Request) (*store.Player, error) {
+// session returns the signed-in caller and their session's token hash, or
+// nils if the request has no token. A token that is present but unknown or
+// expired returns errBadToken.
+func (h *Handler) session(r *http.Request) (*store.Player, []byte, error) {
 	header := r.Header.Get("Authorization")
 	if header == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	token, ok := strings.CutPrefix(header, "Bearer ")
 	if !ok || token == "" {
-		return nil, errBadToken
+		return nil, nil, errBadToken
 	}
-	p, err := h.store.PlayerByTokenHash(r.Context(), hashToken(token))
+	tokenHash := hashToken(token)
+	p, err := h.store.PlayerBySession(r.Context(), tokenHash)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, errBadToken
+		return nil, nil, errBadToken
 	}
-	return p, err
+	if err != nil {
+		return nil, nil, err
+	}
+	return p, tokenHash, nil
 }
 
-// optionalPlayer is player() that writes the error response itself. ok is
+// optionalSession is session() that writes the error response itself. ok is
 // false when the handler should stop.
-func (h *Handler) optionalPlayer(w http.ResponseWriter, r *http.Request) (p *store.Player, ok bool) {
-	p, err := h.player(r)
+func (h *Handler) optionalSession(w http.ResponseWriter, r *http.Request) (p *store.Player, tokenHash []byte, ok bool) {
+	p, tokenHash, err := h.session(r)
 	switch {
 	case errors.Is(err, errBadToken):
-		writeError(w, http.StatusUnauthorized, "your sign-in is no longer valid; choose a name again")
-		return nil, false
+		writeError(w, http.StatusUnauthorized, "your session has expired; please sign in again")
+		return nil, nil, false
 	case err != nil:
 		h.serverError(w, err)
-		return nil, false
+		return nil, nil, false
 	}
-	return p, true
+	return p, tokenHash, true
 }
 
-// requirePlayer is optionalPlayer that also rejects anonymous callers.
-func (h *Handler) requirePlayer(w http.ResponseWriter, r *http.Request) (*store.Player, bool) {
-	p, ok := h.optionalPlayer(w, r)
+// requireSession is optionalSession that also rejects anonymous callers.
+func (h *Handler) requireSession(w http.ResponseWriter, r *http.Request) (*store.Player, []byte, bool) {
+	p, tokenHash, ok := h.optionalSession(w, r)
 	if ok && p == nil {
-		writeError(w, http.StatusUnauthorized, "choose a name first")
-		return nil, false
+		writeError(w, http.StatusUnauthorized, "please sign in first")
+		return nil, nil, false
 	}
+	return p, tokenHash, ok
+}
+
+func (h *Handler) optionalPlayer(w http.ResponseWriter, r *http.Request) (*store.Player, bool) {
+	p, _, ok := h.optionalSession(w, r)
+	return p, ok
+}
+
+func (h *Handler) requirePlayer(w http.ResponseWriter, r *http.Request) (*store.Player, bool) {
+	p, _, ok := h.requireSession(w, r)
 	return p, ok
 }

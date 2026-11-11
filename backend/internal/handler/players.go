@@ -41,39 +41,6 @@ type profile struct {
 	Stats store.Stats `json:"stats"`
 }
 
-func (h *Handler) createPlayer(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name string `json:"name"`
-	}
-	if err := decodeJSON(w, r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, `request body must be {"name": "..."}`)
-		return
-	}
-	name, err := validateName(req.Name)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	token, hash, err := newToken()
-	if err != nil {
-		h.serverError(w, err)
-		return
-	}
-	p, err := h.store.CreatePlayer(r.Context(), name, hash)
-	if errors.Is(err, store.ErrNameTaken) {
-		writeError(w, http.StatusConflict, err.Error())
-		return
-	}
-	if err != nil {
-		h.serverError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"player": profile{Player: p},
-		"token":  token,
-	})
-}
-
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	p, ok := h.requirePlayer(w, r)
 	if !ok {

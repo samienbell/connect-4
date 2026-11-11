@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
 import { navigate } from '../router.jsx';
 import { usePlayer } from '../hooks/usePlayer.jsx';
-import NameForm from '../components/NameForm.jsx';
+import AuthForm from '../components/AuthForm.jsx';
+import PasswordForm from '../components/PasswordForm.jsx';
 import StatsCard from '../components/StatsCard.jsx';
 import RecentGames from '../components/RecentGames.jsx';
 import Leaderboard from '../components/Leaderboard.jsx';
@@ -41,8 +42,8 @@ export default function Lobby() {
           </p>
         ) : (
           <>
-            <p className="hint">Choose a name to play online, keep your stats and appear on the leaderboard.</p>
-            <NameForm />
+            <p className="hint">Sign in to play online, keep your stats and appear on the leaderboard.</p>
+            <AuthForm initialMode="register" />
           </>
         )}
         <div className="actions">
@@ -60,9 +61,29 @@ export default function Lobby() {
         )}
       </section>
 
+      {player && !player.hasPassword && (
+        <section className="panel notice">
+          <h2>Set a password</h2>
+          <p>
+            Your account was created before passwords existed, so it only lives in this browser. Set a password to keep
+            the name <strong>{player.name}</strong> and sign in from other devices.
+          </p>
+          <PasswordForm />
+        </section>
+      )}
+
       {player && <StatsCard stats={player.stats} />}
       {player && <RecentGames player={player} />}
       <Leaderboard highlightId={player?.id} />
+
+      {player?.hasPassword && (
+        <section className="panel">
+          <details>
+            <summary>Change password</summary>
+            <PasswordForm />
+          </details>
+        </section>
+      )}
     </div>
   );
 }

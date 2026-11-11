@@ -60,11 +60,13 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
           resources:
+            # Password hashing (Argon2id) uses 19 MiB per check, at most 4 at
+            # once (see internal/password), so leave room for ~80 MiB of it.
             requests:
               cpu: 50m
-              memory: 32Mi
+              memory: 64Mi
             limits:
-              memory: 128Mi
+              memory: 256Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

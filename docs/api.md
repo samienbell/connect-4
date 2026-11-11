@@ -2,17 +2,38 @@
 
 All responses are JSON. Errors look like `{"error": "message"}`.
 
-## Signing in
+## Accounts and sessions
 
-There are no passwords. `POST /api/players` with a display name returns a
-random **token**; send it on later requests as
+Register or log in with a name and password. Either returns a session
+**token**; send it on later requests as
 
 ```
 Authorization: Bearer <token>
 ```
 
-The server stores only a SHA-256 hash of the token. Names are 2–20 characters
-and unique regardless of case. Endpoints marked 🔒 require a token.
+Endpoints marked 🔒 require a token.
+
+- **Names** are 2–20 characters (letters, numbers, space, `_ . -`) and unique
+  regardless of case.
+- **Passwords** are 8–128 characters and can't equal the name. They're stored
+  as **Argon2id** hashes (19 MiB, 2 iterations, 1 lane, the OWASP minimum) with
+  a random 16-byte salt per password, in PHC format:
+  `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`. If the parameters are raised
+  later, a user's hash is upgraded on their next successful login.
+- **Sessions** last 30 days. The database stores only a SHA-256 hash of each
+  token. Logging out ends that session; changing your password ends all your
+  other sessions.
+- **Throttling:** after 5 wrong passwords in a row, the next attempt must wait
+  30 s, then 1, 2, 4, 8 and at most 15 minutes. While waiting, login returns
+  `429` with a `Retry-After` header, even for the right password. A successful
+  login resets the count. The count lives in the database, so it applies
+  across all backend replicas.
+- A wrong password and an unknown name give the same `401` message and take
+  the same time, so login doesn't reveal which names exist. (Names are public
+  on the leaderboard anyway.)
+- Players created before accounts existed have no password (`hasPassword:
+  false`). They stay signed in on their original browser and can set a
+  password with `PUT /api/me/password`.
 
 ## Objects
 
@@ -51,7 +72,7 @@ and unique regardless of case. Endpoints marked 🔒 require a token.
 ### Profile
 
 ```json
-{ "id": "…", "name": "Alice", "createdAt": "…",
+{ "id": "…", "name": "Alice", "createdAt": "…", "hasPassword": true,
   "stats": { "played": 10, "wins": 6, "losses": 3, "draws": 1, "winRate": 0.6 } }
 ```
 
@@ -59,11 +80,21 @@ Stats count **finished online games** only.
 
 ## Endpoints
 
+### Accounts
+
+| Method | Path | Body | Success | Errors |
+|---|---|---|---|---|
+| POST | `/api/auth/register` | `{"name", "password"}` | 201 `{"player": Profile, "token"}` | 400 invalid name/password, 409 name taken |
+| POST | `/api/auth/login` | `{"name", "password"}` | 200 `{"player": Profile, "token"}` | 400, 401 incorrect name or password, 429 too many attempts |
+| POST 🔒 | `/api/auth/logout` | | 204 | 401 |
+| PUT 🔒 | `/api/me/password` | `{"currentPassword", "newPassword"}` | 204 (other sessions signed out) | 400 invalid new password, 401, 403 wrong current password |
+
+`currentPassword` is ignored for players who don't have a password yet.
+
 ### Players
 
 | Method | Path | Body | Success | Errors |
 |---|---|---|---|---|
-| POST | `/api/players` | `{"name": "Alice"}` | 201 `{"player": Profile, "token": "…"}` | 400 invalid name, 409 name taken |
 | GET 🔒 | `/api/me` | | 200 Profile | 401 |
 | GET 🔒 | `/api/me/games` | | 200 `{"games": [Game]}`, 20 most recent | 401 |
 | GET | `/api/players/{id}` | | 200 Profile | 404 |
