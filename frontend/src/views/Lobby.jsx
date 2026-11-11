@@ -81,7 +81,7 @@ export default function Lobby() {
             New online game
           </button>
           <button type="button" className="secondary" onClick={() => start('local')} disabled={busy}>
-            Play on this device
+            New local game
           </button>
         </div>
         {errorMessage}
