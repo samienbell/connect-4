@@ -1,0 +1,25 @@
+# kubectl apply -k deploy/k8s/overlays/dev
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: connect4-dev
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+# Dev-only credentials. Never reuse these outside a local cluster.
+secretGenerator:
+  - name: postgres-secret
+    literals:
+      - POSTGRES_USER=connect4
+      - POSTGRES_PASSWORD=connect4-dev
+      - POSTGRES_DB=connect4
+
+# Images built locally with scripts/build-images.sh and loaded into the
+# cluster (e.g. `kind load docker-image` or `minikube image load`).
+images:
+  - name: connect4-backend
+    newTag: dev
+  - name: connect4-frontend
+    newTag: dev

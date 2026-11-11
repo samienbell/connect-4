@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The base expects a Secret named "postgres-secret" with keys
+# POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DB. Overlays supply it.
+resources:
+  - postgres.yaml
+  - backend.yaml
+  - frontend.yaml
+  - ingress.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: connect4

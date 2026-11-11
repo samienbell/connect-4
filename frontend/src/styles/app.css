@@ -1,0 +1,160 @@
+:root {
+  --bg: #f4f6fb;
+  --text: #1c2333;
+  --board: #1f4fd1;
+  --board-edge: #163a9c;
+  --hole: #f4f6fb;
+  --p1: #e63946;
+  --p2: #f6c90e;
+  --error: #b00020;
+
+  color-scheme: light;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10131c;
+    --text: #e8ecf5;
+    --board: #2952d9;
+    --board-edge: #1b3a9e;
+    --hole: #10131c;
+    --error: #ff6b81;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+.app {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.75rem;
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.token {
+  display: inline-block;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.6rem;
+  border-radius: 1rem;
+  background: var(--board);
+  box-shadow: 0 0.5rem 0 var(--board-edge);
+}
+
+.column {
+  display: grid;
+  grid-template-rows: repeat(6, 1fr);
+  gap: 0.4rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+.column:hover:not(:disabled),
+.column:focus-visible {
+  background: rgba(255, 255, 255, 0.15);
+  outline: none;
+}
+
+.column:disabled {
+  cursor: default;
+}
+
+.cell {
+  display: block;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--hole);
+}
+
+.cell.p1,
+.token.p1 {
+  background: var(--p1);
+}
+
+.cell.p2,
+.token.p2 {
+  background: var(--p2);
+}
+
+.cell.p1,
+.cell.p2 {
+  animation: drop 0.35s ease-in;
+}
+
+@keyframes drop {
+  from {
+    transform: translateY(-300%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cell.p1,
+  .cell.p2 {
+    animation: none;
+  }
+}
+
+.error {
+  margin: 0;
+  color: var(--error);
+}
+
+.new-game {
+  padding: 0.6rem 1.4rem;
+  border: 0;
+  border-radius: 0.5rem;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--board);
+  cursor: pointer;
+}
+
+.new-game:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

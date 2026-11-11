@@ -1,0 +1,41 @@
+# Runs the whole stack locally:  docker compose up --build
+# Then open http://localhost:3000
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-connect4}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-connect4}
+      POSTGRES_DB: ${POSTGRES_DB:-connect4}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # lets you run the backend outside Docker; remove if the port clashes
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/docker/backend.Dockerfile
+    environment:
+      API_PORT: "8080"
+      DATABASE_URL: postgres://${POSTGRES_USER:-connect4}:${POSTGRES_PASSWORD:-connect4}@db:5432/${POSTGRES_DB:-connect4}?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/docker/frontend.Dockerfile
+    ports:
+      - "3000:8080"
+    depends_on:
+      - backend
+
+volumes:
+  db-data:

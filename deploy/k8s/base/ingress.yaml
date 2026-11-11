@@ -1,0 +1,18 @@
+# Needs an ingress controller (e.g. ingress-nginx) in the cluster.
+# nginx in the frontend pod proxies /api to the backend, so one rule is enough.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: connect4
+spec:
+  rules:
+    - host: connect4.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  name: http

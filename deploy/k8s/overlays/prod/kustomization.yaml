@@ -1,0 +1,43 @@
+# kubectl apply -k deploy/k8s/overlays/prod
+#
+# Create the database secret first, it is deliberately not stored in git:
+#   kubectl create namespace connect4
+#   kubectl -n connect4 create secret generic postgres-secret \
+#     --from-literal=POSTGRES_USER=connect4 \
+#     --from-literal=POSTGRES_PASSWORD='<url-safe password>' \
+#     --from-literal=POSTGRES_DB=connect4
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: connect4
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+# TODO: point at your container registry and release tag.
+images:
+  - name: connect4-backend
+    newName: registry.example.com/connect4-backend
+    newTag: 0.1.0
+  - name: connect4-frontend
+    newName: registry.example.com/connect4-frontend
+    newTag: 0.1.0
+
+patches:
+  - target: { kind: Deployment, name: backend }
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+  - target: { kind: Deployment, name: frontend }
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  # TODO: set your real hostname.
+  - target: { kind: Ingress, name: connect4 }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: connect4.example.com
