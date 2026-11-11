@@ -30,21 +30,51 @@ export default function Lobby() {
     }
   };
 
+  const errorMessage = error && (
+    <p className="error" role="alert">
+      {error}
+    </p>
+  );
+
+  // Signed out: online play (behind sign-in) and local play are separate sections.
+  if (!loading && !player) {
+    return (
+      <div className="lobby">
+        <section className="panel">
+          <h2>Online play</h2>
+          <p className="hint">
+            Play against a friend on another device. Sign in to start a game, keep your stats and appear on the
+            leaderboard.
+          </p>
+          <AuthForm initialMode="register" />
+        </section>
+
+        <section className="panel">
+          <h2>Local play</h2>
+          <p className="hint">Two players take turns on this device. No account needed; games don't count toward stats.</p>
+          <div className="actions">
+            <button type="button" onClick={() => start('local')} disabled={busy}>
+              Play on this device
+            </button>
+          </div>
+          {errorMessage}
+        </section>
+
+        <Leaderboard />
+      </div>
+    );
+  }
+
   return (
     <div className="lobby">
       <section className="panel">
         <h2>Play</h2>
         {loading ? (
           <p className="hint">Loading…</p>
-        ) : player ? (
+        ) : (
           <p>
             Playing as <strong>{player.name}</strong>
           </p>
-        ) : (
-          <>
-            <p className="hint">Sign in to play online, keep your stats and appear on the leaderboard.</p>
-            <AuthForm initialMode="register" />
-          </>
         )}
         <div className="actions">
           <button type="button" onClick={() => start('online')} disabled={!player || busy}>
@@ -54,11 +84,7 @@ export default function Lobby() {
             Play on this device
           </button>
         </div>
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
+        {errorMessage}
       </section>
 
       {player && !player.hasPassword && (
