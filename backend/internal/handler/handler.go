@@ -1,32 +1,48 @@
-// Package handler exposes the game over a JSON HTTP API.
+// Package handler exposes the game over a JSON HTTP API. See docs/api.md.
 package handler
 
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 
-	"connect4/internal/game"
+	"connect4/internal/events"
 	"connect4/internal/store"
 )
 
 type Handler struct {
 	store *store.Store
+	hub   *events.Hub
 	log   *slog.Logger
 }
 
-func New(s *store.Store, log *slog.Logger) *Handler {
-	return &Handler{store: s, log: log}
+func New(s *store.Store, hub *events.Hub, log *slog.Logger) *Handler {
+	return &Handler{store: s, hub: hub, log: log}
 }
 
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.healthz)
 	mux.HandleFunc("GET /readyz", h.readyz)
+
+	mux.HandleFunc("POST /api/auth/register", h.register)
+	mux.HandleFunc("POST /api/auth/login", h.login)
+	mux.HandleFunc("POST /api/auth/logout", h.logout)
+	mux.HandleFunc("PUT /api/me/password", h.changePassword)
+
+	mux.HandleFunc("GET /api/players/{id}", h.getPlayer)
+	mux.HandleFunc("GET /api/me", h.me)
+	mux.HandleFunc("GET /api/me/games", h.myGames)
+	mux.HandleFunc("GET /api/leaderboard", h.leaderboard)
+
 	mux.HandleFunc("POST /api/games", h.createGame)
 	mux.HandleFunc("GET /api/games/{id}", h.getGame)
+	mux.HandleFunc("POST /api/games/{id}/join", h.joinGame)
+	mux.HandleFunc("GET /api/games/{id}/moves", h.listMoves)
 	mux.HandleFunc("POST /api/games/{id}/moves", h.playMove)
+	mux.HandleFunc("GET /api/games/{id}/events", h.gameEvents)
 	return mux
 }
 
@@ -44,75 +60,14 @@ func (h *Handler) readyz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
-func (h *Handler) createGame(w http.ResponseWriter, r *http.Request) {
-	g := game.New()
-	if err := h.store.CreateGame(r.Context(), g); err != nil {
-		h.serverError(w, err)
-		return
+// decodeJSON reads a small JSON body into v. An empty body leaves v unchanged.
+func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	err := json.NewDecoder(r.Body).Decode(v)
+	if errors.Is(err, io.EOF) {
+		return nil
 	}
-	writeJSON(w, http.StatusCreated, g)
-}
-
-func (h *Handler) getGame(w http.ResponseWriter, r *http.Request) {
-	g, err := h.store.GetGame(r.Context(), r.PathValue("id"))
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusNotFound, err.Error())
-		return
-	}
-	if err != nil {
-		h.serverError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, g)
-}
-
-type moveRequest struct {
-	Column *int `json:"column"`
-}
-
-func (h *Handler) playMove(w http.ResponseWriter, r *http.Request) {
-	var req moveRequest
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Column == nil {
-		writeError(w, http.StatusBadRequest, `request body must be {"column": 0-6}`)
-		return
-	}
-	col := *req.Column
-
-	g, err := h.store.GetGame(r.Context(), r.PathValue("id"))
-	if errors.Is(err, store.ErrNotFound) {
-		writeError(w, http.StatusNotFound, err.Error())
-		return
-	}
-	if err != nil {
-		h.serverError(w, err)
-		return
-	}
-
-	player := g.CurrentPlayer
-	row, err := g.Play(col)
-	switch {
-	case errors.Is(err, game.ErrInvalidColumn):
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	case errors.Is(err, game.ErrColumnFull), errors.Is(err, game.ErrGameOver):
-		writeError(w, http.StatusConflict, err.Error())
-		return
-	case err != nil:
-		h.serverError(w, err)
-		return
-	}
-
-	move := store.Move{Number: g.MoveCount, Player: player, Row: row, Col: col}
-	if err := h.store.SaveMove(r.Context(), g, move); err != nil {
-		if errors.Is(err, store.ErrConflict) {
-			writeError(w, http.StatusConflict, err.Error())
-			return
-		}
-		h.serverError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, g)
+	return err
 }
 
 func (h *Handler) serverError(w http.ResponseWriter, err error) {

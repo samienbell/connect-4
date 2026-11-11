@@ -1,6 +1,15 @@
 # Connect 4
 
-A self-contained, two-player (same screen) Connect 4 game.
+A self-contained Connect 4 game.
+
+- **Accounts:** sign up with a name and password and sign in from any device.
+  Passwords are stored as salted Argon2id hashes, and repeated wrong guesses
+  are throttled.
+- **Online play:** start a game and send the link to a friend. Moves appear
+  live for both players, and anyone else with the link can watch.
+- **Play on one device:** two people take turns on the same screen, no name needed.
+- **Replays:** step through any game move by move, or let it play back.
+- **Stats and leaderboard:** wins, losses, draws and win rate from finished online games.
 
 | Layer          | Technology               |
 |----------------|--------------------------|
@@ -10,9 +19,10 @@ A self-contained, two-player (same screen) Connect 4 game.
 | Infrastructure | Docker, Kubernetes (Kustomize) |
 
 The browser talks only to nginx, which serves the React build and proxies
-`/api/*` to the Go backend. The backend stores every game and move in
-PostgreSQL and applies the database schema itself on start-up. See
-[docs/api.md](docs/api.md) for the API.
+`/api/*` to the Go backend. The backend stores players, games and every move
+in PostgreSQL and applies database migrations itself on start-up. Live updates
+use Server-Sent Events, with Postgres `LISTEN/NOTIFY` passing changes between
+backend replicas. See [docs/api.md](docs/api.md) for the API.
 
 ## Run with Docker Compose
 
@@ -33,7 +43,6 @@ docker compose up -d db
 # 2. Backend (http://localhost:8080)
 cd backend
 export DATABASE_URL="postgres://connect4:connect4@localhost:5432/connect4?sslmode=disable"
-go mod tidy          # first time only: fetches deps and writes go.sum
 go run ./cmd/server
 
 # 3. Frontend (http://localhost:5173, proxies /api to :8080)
@@ -42,7 +51,10 @@ npm install
 npm run dev
 ```
 
-Run the game-logic tests with `cd backend && go test ./...`.
+Run the backend tests with `cd backend && go test ./...`.
+
+To try online play on one computer, create two accounts and sign in to the
+second one in a private window (or another browser), then open the game link there.
 
 ## Deploy to Kubernetes
 
@@ -66,17 +78,22 @@ connect-4/
 │   ├── cmd/server/          # main.go: config, DB connect, migrate, HTTP server
 │   ├── internal/
 │   │   ├── config/          # environment-variable settings
-│   │   ├── game/            # rules: moves, win/draw detection (+ tests)
-│   │   ├── handler/         # HTTP routes and JSON responses
-│   │   └── store/           # PostgreSQL queries
-│   └── migrations/          # embedded SQL schema, applied on start-up
+│   │   ├── events/          # live-update hub (Postgres LISTEN/NOTIFY → SSE)
+│   │   ├── game/            # rules: moves, win/draw detection, seats (+ tests)
+│   │   ├── handler/         # HTTP routes, accounts & sessions, SSE stream
+│   │   ├── password/        # salted Argon2id password hashing (+ tests)
+│   │   └── store/           # PostgreSQL queries: games, moves, players, stats
+│   └── migrations/          # versioned SQL files, applied once each on start-up
 ├── frontend/
 │   ├── index.html
 │   ├── vite.config.js
 │   └── src/
-│       ├── api/             # fetch wrapper for the backend
-│       ├── components/      # Board, Status
-│       ├── hooks/           # useGame: game state + API calls
+│       ├── api/             # fetch wrapper + token storage
+│       ├── components/      # Board, Players, AuthForm, PasswordForm, Leaderboard, ...
+│       ├── hooks/           # usePlayer (account/session), useLiveGame (SSE)
+│       ├── lib/             # seat/status text helpers
+│       ├── views/           # Lobby, GameView, ReplayView
+│       ├── router.jsx       # tiny client-side router
 │       └── styles/          # app.css
 ├── deploy/
 │   ├── docker/              # backend & frontend Dockerfiles, nginx.conf

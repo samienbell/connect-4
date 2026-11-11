@@ -1,12 +1,20 @@
 :root {
   --bg: #f4f6fb;
+  --surface: #ffffff;
   --text: #1c2333;
+  --muted: #5d6679;
+  --border: #dde2ee;
   --board: #1f4fd1;
   --board-edge: #163a9c;
   --hole: #f4f6fb;
   --p1: #e63946;
   --p2: #f6c90e;
+  --accent: #1f4fd1;
+  --accent-text: #ffffff;
+  --win: #1a7f37;
+  --loss: #b42318;
   --error: #b00020;
+  --ring: #111827;
 
   color-scheme: light;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -17,11 +25,18 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #10131c;
+    --surface: #181c28;
     --text: #e8ecf5;
+    --muted: #9aa3b5;
+    --border: #2a3142;
     --board: #2952d9;
     --board-edge: #1b3a9e;
     --hole: #10131c;
+    --accent: #4f7bff;
+    --win: #4ac26b;
+    --loss: #ff7b72;
     --error: #ff6b81;
+    --ring: #ffffff;
     color-scheme: dark;
   }
 }
@@ -36,19 +51,395 @@ body {
   background: var(--bg);
 }
 
+/* ---------- layout ---------- */
+
 .app {
-  max-width: 560px;
+  max-width: 720px;
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: 1rem 1rem 3rem;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 0.5rem 1.5rem;
+}
+
+.brand {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: inherit;
+  text-decoration: none;
+}
+
+.badge-name {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.lobby {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+
+.panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+}
+
+.panel p {
+  margin: 0 0 0.75rem;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.error {
+  margin: 0;
+  color: var(--error);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- controls ---------- */
+
+/* Board columns are buttons too but have their own layout (see .column),
+   so they're excluded here. */
+button:not(.column),
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 1.2rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+button.secondary,
+.button.secondary {
+  color: var(--text);
+  background: transparent;
+  border-color: var(--border);
+}
+
+button:not(.column):disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button:focus-visible,
+.button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+}
+
+label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+button.small {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+/* ---------- account forms ---------- */
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 24rem;
+}
+
+.auth-form label {
+  margin: 0.5rem 0 0;
+}
+
+.auth-form .hint,
+.auth-form .error,
+.auth-form .success {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.auth-form button[type='submit'] {
+  margin-top: 0.75rem;
+  align-self: flex-start;
+}
+
+.auth-form input[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin-bottom: 0.25rem;
+  border-radius: 0.6rem;
+  background: var(--bg);
+}
+
+.tabs button:not(.column) {
+  flex: 1;
+  padding: 0.45rem 0.8rem;
+  color: var(--muted);
+  background: transparent;
+}
+
+.tabs button.on:not(.column) {
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
+}
+
+.success {
+  color: var(--win);
+}
+
+.notice {
+  border-color: var(--p2);
+}
+
+details summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+details[open] summary {
+  margin-bottom: 0.5rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* ---------- stats & leaderboard ---------- */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.stats div {
+  padding: 0.6rem;
+  border-radius: 0.5rem;
+  background: var(--bg);
+  text-align: center;
+}
+
+.stats dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.stats dd {
+  margin: 0.2rem 0 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.leaderboard {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.leaderboard th,
+.leaderboard td {
+  padding: 0.5rem;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+
+.leaderboard th:nth-child(2),
+.leaderboard td.name {
+  text-align: left;
+  width: 100%;
+}
+
+.leaderboard th {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.leaderboard tr.me td {
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* ---------- recent games ---------- */
+
+.game-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.game-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.game-list li > div:first-child {
+  flex: 1;
+  min-width: 10rem;
+}
+
+.game-list .title {
+  font-weight: 600;
+}
+
+.game-list .meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.game-list .links {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.badge {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--bg);
+}
+
+.badge.win {
+  color: var(--win);
+}
+
+.badge.loss {
+  color: var(--loss);
+}
+
+.badge.turn {
+  color: var(--accent-text);
+  background: var(--accent);
+}
+
+/* ---------- game ---------- */
+
+.game-view {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1rem;
+  max-width: 560px;
+  margin: 0 auto;
 }
 
-h1 {
+.game-view > .panel,
+.game-view > .share {
+  width: 100%;
+}
+
+.replay-title {
   margin: 0;
-  font-size: 2rem;
+}
+
+.players {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.seat {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.seat.active {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.seat .you {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.vs {
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .status {
@@ -59,13 +450,31 @@ h1 {
   margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
+  text-align: center;
 }
 
 .token {
   display: inline-block;
+  flex: none;
   width: 1.25rem;
   height: 1.25rem;
   border-radius: 50%;
+}
+
+.share {
+  padding: 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+
+.join {
+  text-align: center;
+}
+
+.join .auth-form {
+  margin: 0 auto;
+  text-align: left;
 }
 
 .board {
@@ -122,6 +531,12 @@ h1 {
   animation: drop 0.35s ease-in;
 }
 
+.cell.last {
+  box-shadow:
+    0 0 0 3px var(--board),
+    0 0 0 6px var(--ring);
+}
+
 @keyframes drop {
   from {
     transform: translateY(-300%);
@@ -138,23 +553,24 @@ h1 {
   }
 }
 
-.error {
-  margin: 0;
-  color: var(--error);
+/* ---------- replay ---------- */
+
+.replay-controls {
+  display: flex;
+  gap: 0.4rem;
 }
 
-.new-game {
-  padding: 0.6rem 1.4rem;
-  border: 0;
-  border-radius: 0.5rem;
-  font: inherit;
-  font-weight: 600;
-  color: #fff;
-  background: var(--board);
-  cursor: pointer;
+.replay-controls button {
+  min-width: 2.75rem;
+  padding-inline: 0.75rem;
 }
 
-.new-game:disabled {
-  opacity: 0.6;
-  cursor: default;
+.replay-controls .play {
+  min-width: 6rem;
+}
+
+.scrubber {
+  width: 100%;
+  padding: 0;
+  accent-color: var(--accent);
 }
