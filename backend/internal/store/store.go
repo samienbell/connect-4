@@ -1,9 +1,8 @@
-// Package store persists games and moves in PostgreSQL.
+// Package store persists players, games and moves in PostgreSQL.
 package store
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -15,27 +14,32 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"connect4/internal/game"
 	"connect4/migrations"
 )
 
+// EventsChannel is the Postgres NOTIFY channel that carries the ID of every
+// game that changes. See internal/events.
+const EventsChannel = "game_events"
+
+// migrationLockID is an arbitrary key for pg_advisory_lock so that only one
+// replica runs migrations at a time.
+const migrationLockID int64 = 4_242_001
+
 var (
-	ErrNotFound = errors.New("game not found")
-	ErrConflict = errors.New("game was updated by another request; reload and try again")
+	ErrNotFound   = errors.New("not found")
+	ErrConflict   = errors.New("game was updated by another request; reload and try again")
+	ErrNameTaken  = errors.New("that name is already taken")
+	ErrCannotJoin = errors.New("this game can no longer be joined")
 )
 
 var uuidRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
+// validID reports whether id looks like a UUID. Checking first turns
+// malformed IDs into ErrNotFound instead of a Postgres syntax error.
+func validID(id string) bool { return uuidRE.MatchString(id) }
+
 type Store struct {
 	pool *pgxpool.Pool
-}
-
-// Move is one row of the moves history table.
-type Move struct {
-	Number int
-	Player game.Player
-	Row    int
-	Col    int
 }
 
 // Open connects to PostgreSQL, retrying while the database starts up.
@@ -68,106 +72,60 @@ func (s *Store) Close() { s.pool.Close() }
 
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
-// Migrate applies every embedded .sql file in filename order.
+// Migrate applies, in filename order, every embedded .sql file that isn't yet
+// recorded in schema_migrations. Each file runs in its own transaction.
 func (s *Store) Migrate(ctx context.Context) error {
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", migrationLockID); err != nil {
+		return fmt.Errorf("lock: %w", err)
+	}
+	defer conn.Exec(context.Background(), "SELECT pg_advisory_unlock($1)", migrationLockID) //nolint:errcheck
+
+	if _, err := conn.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version    TEXT        PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)`); err != nil {
+		return err
+	}
+
 	entries, err := fs.ReadDir(migrations.FS, ".")
 	if err != nil {
 		return err
 	}
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".sql") {
 			continue
 		}
-		sql, err := fs.ReadFile(migrations.FS, e.Name())
+		var applied bool
+		if err := conn.QueryRow(ctx,
+			"SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)", name,
+		).Scan(&applied); err != nil {
+			return err
+		}
+		if applied {
+			continue
+		}
+		sql, err := fs.ReadFile(migrations.FS, name)
 		if err != nil {
 			return err
 		}
-		if _, err := s.pool.Exec(ctx, string(sql)); err != nil {
-			return fmt.Errorf("%s: %w", e.Name(), err)
+		err = pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, string(sql)); err != nil {
+				return err
+			}
+			_, err := tx.Exec(ctx, "INSERT INTO schema_migrations (version) VALUES ($1)", name)
+			return err
+		})
+		if err != nil {
+			return fmt.Errorf("%s: %w", name, err)
 		}
 	}
 	return nil
-}
-
-func (s *Store) CreateGame(ctx context.Context, g *game.Game) error {
-	board, err := json.Marshal(g.Board)
-	if err != nil {
-		return err
-	}
-	return s.pool.QueryRow(ctx, `
-		INSERT INTO games (board, current_player, status, move_count)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id::text, created_at, updated_at`,
-		string(board), int16(g.CurrentPlayer), string(g.Status), g.MoveCount,
-	).Scan(&g.ID, &g.CreatedAt, &g.UpdatedAt)
-}
-
-func (s *Store) GetGame(ctx context.Context, id string) (*game.Game, error) {
-	if !uuidRE.MatchString(id) {
-		return nil, ErrNotFound
-	}
-	var (
-		g       game.Game
-		board   []byte
-		current int16
-		status  string
-		winner  *int16
-	)
-	err := s.pool.QueryRow(ctx, `
-		SELECT id::text, board, current_player, status, winner, move_count, created_at, updated_at
-		FROM games WHERE id = $1`, id,
-	).Scan(&g.ID, &board, &current, &status, &winner, &g.MoveCount, &g.CreatedAt, &g.UpdatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(board, &g.Board); err != nil {
-		return nil, fmt.Errorf("decode board: %w", err)
-	}
-	g.CurrentPlayer = game.Player(current)
-	g.Status = game.Status(status)
-	if winner != nil {
-		g.Winner = game.Player(*winner)
-	}
-	return &g, nil
-}
-
-// SaveMove stores the game's new state and records the move. g must already
-// have had the move applied. It returns ErrConflict if another request saved a
-// move to this game first.
-func (s *Store) SaveMove(ctx context.Context, g *game.Game, m Move) error {
-	board, err := json.Marshal(g.Board)
-	if err != nil {
-		return err
-	}
-	var winner *int16
-	if g.Winner != game.Empty {
-		w := int16(g.Winner)
-		winner = &w
-	}
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		err := tx.QueryRow(ctx, `
-			UPDATE games
-			SET board = $2, current_player = $3, status = $4, winner = $5,
-			    move_count = $6, updated_at = now()
-			WHERE id = $1 AND move_count = $7
-			RETURNING updated_at`,
-			g.ID, string(board), int16(g.CurrentPlayer), string(g.Status), winner,
-			g.MoveCount, g.MoveCount-1,
-		).Scan(&g.UpdatedAt)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrConflict
-		}
-		if err != nil {
-			return err
-		}
-		_, err = tx.Exec(ctx, `
-			INSERT INTO moves (game_id, move_number, player, row_idx, col_idx)
-			VALUES ($1, $2, $3, $4, $5)`,
-			g.ID, m.Number, int16(m.Player), int16(m.Row), int16(m.Col),
-		)
-		return err
-	})
 }

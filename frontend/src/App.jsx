@@ -1,36 +1,36 @@
-import Board from './components/Board.jsx';
-import Status from './components/Status.jsx';
-import { useGame } from './hooks/useGame.js';
+import { Link, useRoute } from './router.jsx';
+import { PlayerProvider, usePlayer } from './hooks/usePlayer.jsx';
+import Lobby from './views/Lobby.jsx';
+import GameView from './views/GameView.jsx';
+import ReplayView from './views/ReplayView.jsx';
+
+function PlayerBadge() {
+  const { player } = usePlayer();
+  if (!player) return null;
+  return <span className="badge-name">{player.name}</span>;
+}
+
+function Page() {
+  const route = useRoute();
+  if (route.name === 'game') return <GameView key={route.id} gameId={route.id} />;
+  if (route.name === 'replay') return <ReplayView key={route.id} gameId={route.id} />;
+  return <Lobby />;
+}
 
 export default function App() {
-  const { game, error, busy, newGame, play } = useGame();
-
   return (
-    <main className="app">
-      <h1>Connect 4</h1>
-
-      {game ? (
-        <>
-          <Status game={game} />
-          <Board
-            board={game.board}
-            disabled={busy || game.status !== 'in_progress'}
-            onPlay={play}
-          />
-        </>
-      ) : (
-        <p className="status">Loading…</p>
-      )}
-
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-
-      <button type="button" className="new-game" onClick={newGame} disabled={busy}>
-        New game
-      </button>
-    </main>
+    <PlayerProvider>
+      <div className="app">
+        <header className="topbar">
+          <Link to="/" className="brand">
+            Connect 4
+          </Link>
+          <PlayerBadge />
+        </header>
+        <main>
+          <Page />
+        </main>
+      </div>
+    </PlayerProvider>
   );
 }

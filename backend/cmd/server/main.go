@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"connect4/internal/config"
+	"connect4/internal/events"
 	"connect4/internal/handler"
 	"connect4/internal/store"
 )
@@ -43,14 +44,20 @@ func run(log *slog.Logger) error {
 		return fmt.Errorf("migrate: %w", err)
 	}
 
+	hub := events.NewHub(store.EventsChannel, log)
+	go hub.Listen(ctx, cfg.DatabaseURL)
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           handler.New(st, log).Routes(),
+		Handler:           handler.New(st, hub, log).Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
+	// Live game streams never finish on their own; end them so Shutdown
+	// doesn't wait for its full timeout.
+	srv.RegisterOnShutdown(hub.Close)
 
 	errCh := make(chan error, 1)
 	go func() {
