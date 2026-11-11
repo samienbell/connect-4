@@ -135,7 +135,9 @@ body {
 
 /* ---------- controls ---------- */
 
-button,
+/* Board columns are buttons too but have their own layout (see .column),
+   so they're excluded here. */
+button:not(.column),
 .button {
   display: inline-flex;
   align-items: center;
@@ -158,7 +160,7 @@ button.secondary,
   border-color: var(--border);
 }
 
-button:disabled {
+button:not(.column):disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -431,7 +433,6 @@ a {
 }
 
 .column:disabled {
-  opacity: 1;
   cursor: default;
 }
 
