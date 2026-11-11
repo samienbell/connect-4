@@ -54,7 +54,7 @@ export default function Lobby() {
           <p className="hint">Two players take turns on this device. No account needed; games don't count toward stats.</p>
           <div className="actions">
             <button type="button" onClick={() => start('local')} disabled={busy}>
-              Play on this device
+              New local game
             </button>
           </div>
           {errorMessage}
